@@ -10,7 +10,8 @@
 # Full mode làm 4 việc:
 #   1. Cài package: kde-material-you-colors, adwaita-material-you (AUR) + inotify-tools (repo)
 #   2. Vá tương thích materialyoucolor v3 (3 chỗ, idempotent)
-#   3. Dựng hook tự chạy lại adwmu khi đổi wallpaper (systemd user service)
+#   3. Dựng hook tự chạy lại adwmu khi đổi wallpaper HOẶC đổi scheme variant
+#      trong widget kde-material-you-colors (systemd user service)
 #   4. Tự cài chính nó vào /usr/local/bin + pacman hook để tự vá lại sau mỗi lần update
 #
 set -u
@@ -23,6 +24,8 @@ usage() {
     echo "Usage:"
     echo "  ./material-you-setup.sh [--scheme dark|light] [--variant V]  # full setup, chạy AS USER"
     echo "      V: default | vibrant | expressive | \"fruit salad\" | muted"
+    echo "      (variant của adwmu được ĐỒNG BỘ từ widget kde-material-you-colors;"
+    echo "       --variant chỉ là fallback khi không đọc được config của nó)"
     echo "  sudo ./material-you-setup.sh --patch-only                     # chỉ vá lại (cho pacman hook)"
 }
 
@@ -148,44 +151,72 @@ setup_wallpaper_hook() {
 
     cat > "$bindir/adwmu-wallpaper-hook.sh" <<'HOOK_EOF'
 #!/bin/bash
-# Hook: tự chạy lại adwmu mỗi khi đổi wallpaper trên Plasma
+# Hook: tự chạy lại adwmu khi đổi wallpaper HOẶC đổi scheme variant trong
+# widget kde-material-you-colors (đọc scheme_variant từ config của nó).
 # (tự sinh bởi material-you-setup.sh)
 set -u
-DIR="$HOME/.config"
-FILE="plasma-org.kde.plasma.desktop-appletsrc"
-CFG="$DIR/$FILE"
+CFG_DIR="$HOME/.config"
+APPLETSRC="$CFG_DIR/plasma-org.kde.plasma.desktop-appletsrc"
+KMYC_CONF="$CFG_DIR/kde-material-you-colors/config.conf"
 SCHEME="@@SCHEME@@"
-VARIANT="@@VARIANT@@"
-last=""
+FALLBACK_VARIANT="@@FALLBACK_VARIANT@@"
+last_wallpaper=""
+last_variant=""
 
 get_wallpaper() {
     awk '
         /^\[Containments\]\[[0-9]+\]\[Wallpaper\]\[org\.kde\.image\]\[General\]$/ { t=1; next }
         /^\[/ { t=0 }
         t && /^Image=/ { sub(/^Image=/, ""); sub(/^file:\/\//, ""); print; exit }
-    ' "$CFG" 2>/dev/null
+    ' "$APPLETSRC" 2>/dev/null
+}
+
+# Map M3 scheme_variant (int) sang adwmu -V:
+#   0 Content    -> default      5 TonalSpot  -> default
+#   1 Expressive -> expressive   6 Vibrant    -> vibrant
+#   2 Fidelity   -> default      7 Rainbow    -> vibrant
+#   3 Monochrome -> muted        8 FruitSalad -> "fruit salad"
+get_variant() {
+    local v=""
+    if [ -f "$KMYC_CONF" ]; then
+        v="$(grep -E '^scheme_variant[[:space:]]*=' "$KMYC_CONF" | cut -d= -f2 | tr -d '[:space:]')"
+    fi
+    case "$v" in
+        1) echo "expressive" ;;
+        6|7) echo "vibrant" ;;
+        8) echo "fruit salad" ;;
+        3) echo "muted" ;;
+        0|2|4|5) echo "default" ;;
+        *) echo "$FALLBACK_VARIANT" ;;
+    esac
 }
 
 apply() {
-    local img
+    local img variant
     img="$(get_wallpaper)"
-    if [ -n "$img" ] && [ -f "$img" ] && [ "$img" != "$last" ]; then
-        last="$img"
-        echo "[hook] wallpaper -> $img"
-        adwmu "$SCHEME" -w "$img" -a -V "$VARIANT"
+    variant="$(get_variant)"
+    if [ -n "$img" ] && [ -f "$img" ] \
+        && { [ "$img" != "$last_wallpaper" ] || [ "$variant" != "$last_variant" ]; }; then
+        last_wallpaper="$img"
+        last_variant="$variant"
+        echo "[hook] wallpaper -> $img | variant -> $variant"
+        adwmu "$SCHEME" -w "$img" -a -V "$variant"
     fi
 }
 
 apply
-inotifywait -m -e close_write -e moved_to --format '%f' "$DIR" 2>/dev/null | while read -r f; do
-    [ "$f" = "$FILE" ] || continue
+inotifywait -m -e close_write -e moved_to --format '%w%f' "$CFG_DIR" 2>/dev/null | while read -r path; do
+    case "$path" in
+        "$APPLETSRC"|"$KMYC_CONF") ;;
+        *) continue ;;
+    esac
     sleep 2
     apply
 done
 HOOK_EOF
-    sed -i "s/@@SCHEME@@/$SCHEME/; s/@@VARIANT@@/$VARIANT/" "$bindir/adwmu-wallpaper-hook.sh"
+    sed -i "s/@@SCHEME@@/$SCHEME/; s/@@FALLBACK_VARIANT@@/$VARIANT/" "$bindir/adwmu-wallpaper-hook.sh"
     chmod +x "$bindir/adwmu-wallpaper-hook.sh"
-    log "đã viết $bindir/adwmu-wallpaper-hook.sh (scheme=$SCHEME variant=$VARIANT)"
+    log "đã viết $bindir/adwmu-wallpaper-hook.sh (scheme=$SCHEME, variant đồng bộ từ widget kde-material-you-colors, fallback=$VARIANT)"
 
     cat > "$svc_dir/adwmu-wallpaper-hook.service" <<'SVC_EOF'
 [Unit]

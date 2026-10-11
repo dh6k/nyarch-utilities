@@ -17,7 +17,26 @@ cd material-you-setup
 chmod +x material-you-setup.sh
 ./material-you-setup.sh [--scheme dark|light] [--variant V]  # full setup — run AS YOUR USER (no sudo)
 # V: default | vibrant | expressive | "fruit salad" | muted
+# (--variant chỉ là fallback; xem "Settings sync" bên dưới)
 ```
+
+## Settings sync
+
+The wallpaper hook doesn't just watch for wallpaper changes — it also watches
+`~/.config/kde-material-you-colors/config.conf` and syncs the widget's
+**Color scheme** selection to `adwmu`'s `-V` variant:
+
+| Widget scheme | adwmu variant |
+|---|---|
+| Vibrant, Rainbow | `vibrant` |
+| Expressive | `expressive` |
+| FruitSalad | `fruit salad` |
+| Monochrome | `muted` |
+| Content, Fidelity, Neutral, TonalSpot | `default` |
+
+So picking "Vibrant" in the widget (like in the screenshot) automatically
+re-applies the GTK theme with `-V vibrant` — no manual flags needed.
+`--variant` is only used as a fallback when the widget's config can't be read.
 
 Patch-only mode (used by the pacman hook, or re-run manually after updates):
 
