@@ -15,7 +15,8 @@ One-shot setup + self-maintaining Material You theming stack for KDE Plasma (Arc
 git clone https://github.com/dh6k/material-you-setup.git
 cd material-you-setup
 chmod +x material-you-setup.sh
-./material-you-setup.sh [--scheme dark|light]   # full setup — run AS YOUR USER (no sudo)
+./material-you-setup.sh [--scheme dark|light] [--variant V]  # full setup — run AS YOUR USER (no sudo)
+# V: default | vibrant | expressive | "fruit salad" | muted
 ```
 
 Patch-only mode (used by the pacman hook, or re-run manually after updates):

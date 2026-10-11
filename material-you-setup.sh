@@ -2,8 +2,10 @@
 #
 # material-you-setup.sh — Cài đặt + vá + tự duy trì stack Material You trên KDE Plasma
 #
-#   ./material-you-setup.sh [--scheme dark|light]   cài đặt đầy đủ, CHẠY AS USER (không sudo)
-#   sudo material-you-setup.sh --patch-only         chỉ vá lại 3 patch v3 (pacman hook gọi mode này)
+#   ./material-you-setup.sh [--scheme dark|light] [--variant V]  cài đặt đầy đủ, CHẠY AS USER (không sudo)
+#   sudo material-you-setup.sh --patch-only                       chỉ vá lại 3 patch v3 (pacman hook gọi mode này)
+#
+#   V: default | vibrant | expressive | "fruit salad" | muted
 #
 # Full mode làm 4 việc:
 #   1. Cài package: kde-material-you-colors, adwaita-material-you (AUR) + inotify-tools (repo)
@@ -14,18 +16,21 @@
 set -u
 
 SCHEME="dark"
+VARIANT="default"
 MODE="full"
 
 usage() {
     echo "Usage:"
-    echo "  ./material-you-setup.sh [--scheme dark|light]   # full setup, chạy AS USER"
-    echo "  sudo ./material-you-setup.sh --patch-only        # chỉ vá lại (cho pacman hook)"
+    echo "  ./material-you-setup.sh [--scheme dark|light] [--variant V]  # full setup, chạy AS USER"
+    echo "      V: default | vibrant | expressive | \"fruit salad\" | muted"
+    echo "  sudo ./material-you-setup.sh --patch-only                     # chỉ vá lại (cho pacman hook)"
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --patch-only) MODE="patch"; shift ;;
         --scheme) SCHEME="${2:-dark}"; shift 2 ;;
+        --variant) VARIANT="${2:-default}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown arg: $1"; usage; exit 1 ;;
     esac
@@ -150,6 +155,7 @@ DIR="$HOME/.config"
 FILE="plasma-org.kde.plasma.desktop-appletsrc"
 CFG="$DIR/$FILE"
 SCHEME="@@SCHEME@@"
+VARIANT="@@VARIANT@@"
 last=""
 
 get_wallpaper() {
@@ -166,7 +172,7 @@ apply() {
     if [ -n "$img" ] && [ -f "$img" ] && [ "$img" != "$last" ]; then
         last="$img"
         echo "[hook] wallpaper -> $img"
-        adwmu "$SCHEME" -w "$img" -a
+        adwmu "$SCHEME" -w "$img" -a -V "$VARIANT"
     fi
 }
 
@@ -177,9 +183,9 @@ inotifywait -m -e close_write -e moved_to --format '%f' "$DIR" 2>/dev/null | whi
     apply
 done
 HOOK_EOF
-    sed -i "s/@@SCHEME@@/$SCHEME/" "$bindir/adwmu-wallpaper-hook.sh"
+    sed -i "s/@@SCHEME@@/$SCHEME/; s/@@VARIANT@@/$VARIANT/" "$bindir/adwmu-wallpaper-hook.sh"
     chmod +x "$bindir/adwmu-wallpaper-hook.sh"
-    log "đã viết $bindir/adwmu-wallpaper-hook.sh (scheme=$SCHEME)"
+    log "đã viết $bindir/adwmu-wallpaper-hook.sh (scheme=$SCHEME variant=$VARIANT)"
 
     cat > "$svc_dir/adwmu-wallpaper-hook.service" <<'SVC_EOF'
 [Unit]
@@ -199,7 +205,10 @@ SVC_EOF
     # dọn file .desktop autostart cũ (giờ service đã tự apply lúc login)
     rm -f "$HOME/.config/autostart/adwaita-material-you.desktop"
 
-    if systemctl --user daemon-reload && systemctl --user enable --now adwmu-wallpaper-hook.service; then
+    # restart (thay vì start) để lần chạy lại nào cũng refresh hook đang chạy
+    if systemctl --user daemon-reload \
+        && systemctl --user enable adwmu-wallpaper-hook.service \
+        && systemctl --user restart adwmu-wallpaper-hook.service; then
         log "hook service: enabled + running"
     else
         log "WARN: không enable được user service (đang ngoài desktop session?) — chạy tay sau:"
@@ -245,7 +254,7 @@ main() {
 
     [ "$(id -u)" -ne 0 ] || die "chạy AS USER (không sudo) — script tự sudo khi cần"
 
-    log "=== Material You setup: scheme=$SCHEME ==="
+    log "=== Material You setup: scheme=$SCHEME variant=$VARIANT ==="
     install_packages
     patch_all || die "vá patch thất bại, dừng lại"
     setup_wallpaper_hook
