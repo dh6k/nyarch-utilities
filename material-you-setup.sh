@@ -34,6 +34,9 @@ done
 log() { echo "[material-you] $*"; }
 die() { echo "[material-you] LỖI: $*" >&2; exit 1; }
 
+# patch-only mode đã chạy as root; full mode chạy as user nên sed cần sudo
+if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+
 SCRIPT_SRC="$(readlink -f "$0")"
 INSTALLED_PATH="/usr/local/bin/material-you-setup.sh"
 
@@ -49,7 +52,7 @@ patch_all() {
     f="$KDE_DIR/utils/extra_image_utils.py"
     if [ -f "$f" ]; then
         if grep -q "dislike_filter" "$f"; then
-            sed -i '/dislike_filter/d' "$f" \
+            $SUDO sed -i '/dislike_filter/d' "$f" \
                 && log "patched: extra_image_utils.py (xoa dislike_filter)" \
                 && patched=$((patched + 1))
         else
@@ -65,7 +68,7 @@ patch_all() {
     f="$KDE_DIR/utils/m3_scheme_utils.py"
     if [ -f "$f" ]; then
         if grep -Fq 'hexFromArgb(argb_from_rgba(palette.tone(x)))' "$f"; then
-            sed -i 's|hexFromArgb(argb_from_rgba(palette\.tone(x)))|hexFromArgb(palette.tone(x))|' "$f" \
+            $SUDO sed -i 's|hexFromArgb(argb_from_rgba(palette\.tone(x)))|hexFromArgb(palette.tone(x))|' "$f" \
                 && log "patched: m3_scheme_utils.py (palette.tone v3)" \
                 && patched=$((patched + 1))
         else
@@ -81,7 +84,7 @@ patch_all() {
             log "skip (da patch): main.py (adwaita-material-you)"
             skipped=$((skipped + 1))
         elif grep -Fq 'generated[key] = ColorUtils.argb_from_argb_arr(color[0]' "$f"; then
-            sed -i 's|generated\[key\] = ColorUtils.argb_from_argb_arr(color\[0\], color\[1\], color\[2\], color\[3\])|generated[key] = color if isinstance(color, int) else ColorUtils.argb_from_argb_arr(color[0], color[1], color[2], color[3])|' "$f" \
+            $SUDO sed -i 's|generated\[key\] = ColorUtils.argb_from_argb_arr(color\[0\], color\[1\], color\[2\], color\[3\])|generated[key] = color if isinstance(color, int) else ColorUtils.argb_from_argb_arr(color[0], color[1], color[2], color[3])|' "$f" \
                 && log "patched: main.py (isinstance guard)" \
                 && patched=$((patched + 1))
         else
@@ -92,11 +95,13 @@ patch_all() {
         skipped=$((skipped + 1))
     fi
 
-    # Verify: compile check + smoke test import
+    # Verify: syntax check bằng ast.parse (read-only — py_compile cần quyền ghi .pyc
+    # nên báo fail giả khi chạy as user trên file root-owned)
     ok=1
     for pf in "$KDE_DIR/utils/extra_image_utils.py" "$KDE_DIR/utils/m3_scheme_utils.py" "$ADW_MAIN"; do
         if [ -f "$pf" ]; then
-            python -m py_compile "$pf" 2>/dev/null || { log "SYNTAX FAIL: $pf"; ok=0; }
+            python -c "import ast,sys; ast.parse(open(sys.argv[1]).read(), sys.argv[1])" "$pf" 2>/dev/null \
+                || { log "SYNTAX FAIL: $pf"; ok=0; }
         fi
     done
     if [ -d "$KDE_DIR" ]; then
