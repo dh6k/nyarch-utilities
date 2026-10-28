@@ -12,14 +12,14 @@
 # from MiSans, fontconfig falls through to Noto instead of tofu
 # or AR PL New Sung.
 #
-# Rendering defaults (for a typical 15.6" LCD, RGB stripe):
-# antialias on, hintstyle hintmedium, subpixel rgba rgb,
-# lcdfilter lcddefault. This replaces KDE's previous defaults of
-# Sub-pixel None + Hinting Slight, which look soft at 11pt.
-# If you see red/blue fringing, the panel is not RGB stripe:
-# change rgba to none (or lcdfilter to lcdlight) in fonts.conf.
-# If text is still soft, try hintfull instead of hintmedium --
-# sharpest, but it can distort MiSans VF / CJK strokes at 11pt.
+# Rendering defaults (verified on the author's 15.6" Nyarch laptop):
+# antialias on, hintstyle hintslight, subpixel rgba none,
+# lcdfilter lcdnone (grayscale anti-aliasing, no subpixel).
+# NOTE: rgba rgb + hintmedium was tried first and looked bad on
+# this machine (colour fringing / uneven strokes at 11pt), and
+# hintmedium + rgba none still looked bad. hintslight + rgba none
+# is the combination that looks clean. Do not "improve" this back
+# to rgb/medium without re-testing on the real machine.
 #
 # Usage:
 #   1. Download the MiSans zip(s) in a browser from
@@ -142,16 +142,17 @@ cat > "$FONT_CONF" <<'EOF'
     <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK TC</string></edit>
   </match>
 
-  <!-- Sharp rendering for a typical 15.6" LCD (RGB stripe).
-       Do NOT tick KDE's "Exclude range from anti-aliasing" with the
-       default 8-15pt range: UI fonts at 9-11pt sit inside it, so it
-       would switch anti-aliasing off exactly for the UI. -->
+  <!-- Rendering verified on the author's 15.6" Nyarch laptop:
+       grayscale anti-aliasing, no subpixel. Do NOT tick KDE's
+       "Exclude range from anti-aliasing" with the default 8-15pt
+       range: UI fonts at 9-11pt sit inside it, so it would switch
+       anti-aliasing off exactly for the UI. -->
   <match target="font">
     <edit name="antialias" mode="assign"><bool>true</bool></edit>
     <edit name="hinting" mode="assign"><bool>true</bool></edit>
-    <edit name="hintstyle" mode="assign"><const>hintmedium</const></edit>
-    <edit name="rgba" mode="assign"><const>rgb</const></edit>
-    <edit name="lcdfilter" mode="assign"><const>lcddefault</const></edit>
+    <edit name="hintstyle" mode="assign"><const>hintslight</const></edit>
+    <edit name="rgba" mode="assign"><const>none</const></edit>
+    <edit name="lcdfilter" mode="assign"><const>lcdnone</const></edit>
   </match>
 </fontconfig>
 EOF
@@ -175,17 +176,16 @@ echo
 echo "== 4. Sync KDE Xft settings (so System Settings matches fontconfig) =="
 if command -v kwriteconfig6 >/dev/null 2>&1; then
     kwriteconfig6 --file kdeglobals --group General --key XftAntialias true
-    kwriteconfig6 --file kdeglobals --group General --key XftHintStyle hintmedium
-    kwriteconfig6 --file kdeglobals --group General --key XftSubPixel rgb
-    echo "KDE Xft: antialias=true, hintstyle=hintmedium, subpixel=rgb"
+    kwriteconfig6 --file kdeglobals --group General --key XftHintStyle hintslight
+    kwriteconfig6 --file kdeglobals --group General --key XftSubPixel none
+    echo "KDE Xft: antialias=true, hintstyle=hintslight, subpixel=none"
 else
     echo "kwriteconfig6 not found, skipping KDE sync (fontconfig above still applies)."
 fi
 echo "--- Rendering actually applied ---"
 fc-match -v "sans-serif" | grep -E "antialias:|hintstyle:|rgba:|lcdfilter:" || true
-echo "(Note: on Wayland, some native Wayland apps may ignore subpixel"
-echo " rendering even when fontconfig says rgb -- that is the compositor,"
-echo " not a config error. X11 / XWayland apps follow it.)"
+echo "(Subpixel is off here on purpose: rgb/medium looked bad on"
+echo " the author's machine. See the header comment.)"
 
 echo
 echo "Done. Restart open apps to see it. No reboot needed."
