@@ -109,3 +109,53 @@ chmod +x install-gnome-terminal-shim.sh
 - Tip: Nyarch Updater's *system* update command doesn't need the shim — it's a
   GSettings key (`system-update-command`) editable right in the app's Settings UI.
   Set it to `sudo pacman -Syu --noconfirm` directly.
+
+## install-misans.sh
+
+Install MiSans (Xiaomi HyperOS font, downloaded from
+https://hyperos.mi.com/font/en/download/) as the system-wide sans-serif
+for every language, including CJK — and fix the common fallback trap
+where Japanese / Simplified Chinese fall back to `AR PL New Sung`
+(thin Song/Ming serif, hard to read at UI sizes) instead of a clean sans.
+
+### What it does
+
+1. Extracts every `.ttf`/`.otf` from the given MiSans zip(s) to
+   `~/.local/share/fonts/MiSans` (per-user, no sudo needed for install)
+2. Backs up an existing `~/.config/fontconfig/fonts.conf` with a
+   timestamp, then writes a new one: MiSans first for `sans-serif`,
+   Noto kept behind it as fallback
+3. Adds strong per-language prepends: `ja` -> MiSans + Noto Sans CJK JP,
+   `ko` -> MiSans + Noto Sans CJK KR, `zh-cn` -> MiSans + Noto Sans CJK SC,
+   `zh-tw`/`zh-hk` -> MiSans TC + Noto Sans CJK TC
+4. Rebuilds the font cache and prints the first `fc-match` per language
+
+### Usage
+
+```bash
+chmod +x install-misans.sh
+./install-misans.sh ~/Downloads/Misans.zip
+# multiple zips at once, e.g. MiSans + MiSans TC:
+./install-misans.sh ~/Downloads/Misans.zip ~/Downloads/Misans-TC.zip
+```
+
+Then restart apps that were already open (no reboot needed), and in
+KDE set System Settings > Appearance > Fonts to MiSans so apps asking
+for the UI font get it directly instead of only via fallback.
+
+### Notes
+
+- MiSans Global is split into separate files (MiSans, MiSans TC,
+  MiSans L3, MiSans Latin, ...). MiSans Latin alone covers no CJK,
+  so downloading only that file will not change CJK rendering.
+- MiSans L3 covers only rare characters (GB 18030-2022 Level 3) and
+  does not include the common Level 1+2 set — never put it first
+  on its own.
+- Japanese / Korean coverage of the downloaded file is not
+  guaranteed. That is why Noto is kept as fallback: a glyph MiSans
+  does not have falls through to Noto, not to tofu or AR PL New Sung.
+- Check the result with `fc-match "sans-serif:lang=ja"`,
+  `fc-match "sans-serif:lang=ko"`, `fc-match "sans-serif:lang=zh-cn"`.
+- The downloaded family may be named `MiSans` or `MiSans VF`
+  (variable font); both names are listed in the config, fontconfig
+  ignores the one that is not installed.
