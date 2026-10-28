@@ -128,7 +128,14 @@ where Japanese / Simplified Chinese fall back to `AR PL New Sung`
 3. Adds strong per-language prepends: `ja` -> MiSans + Noto Sans CJK JP,
    `ko` -> MiSans + Noto Sans CJK KR, `zh-cn` -> MiSans + Noto Sans CJK SC,
    `zh-tw`/`zh-hk` -> MiSans TC + Noto Sans CJK TC
-4. Rebuilds the font cache and prints the first `fc-match` per language
+4. Sets sharp rendering in the same `fonts.conf` (for a typical
+   15.6" LCD, RGB stripe): anti-aliasing on, `hintstyle: hintmedium`,
+   `rgba: rgb`, `lcdfilter: lcddefault` — replacing KDE's previous
+   defaults of Sub-pixel None + Hinting Slight, which look soft at 11pt
+5. Syncs the matching KDE Xft settings (`XftAntialias`,
+   `XftHintStyle`, `XftSubPixel` in `kdeglobals`, via `kwriteconfig6`
+   when available), rebuilds the font cache, and prints the first
+   `fc-match` per language plus the rendering actually applied
 
 ### Usage
 
@@ -159,3 +166,12 @@ for the UI font get it directly instead of only via fallback.
 - The downloaded family may be named `MiSans` or `MiSans VF`
   (variable font); both names are listed in the config, fontconfig
   ignores the one that is not installed.
+- Rendering tuning: if you see red/blue fringing, the panel is not
+  RGB stripe — change `rgba` to `none` (or `lcdfilter` to `lcdlight`)
+  in `fonts.conf`. If text is still soft, try `hintfull` instead of
+  `hintmedium` (sharpest, but it can distort MiSans VF / CJK strokes
+  at 11pt). Do not tick KDE's "Exclude range from anti-aliasing"
+  with the default 8-15pt range: UI fonts at 9-11pt sit inside it,
+  so it would switch anti-aliasing off exactly for the UI.
+  On Wayland, some native Wayland apps may ignore subpixel
+  rendering even when fontconfig says `rgb`.
