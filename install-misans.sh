@@ -62,7 +62,7 @@ echo "Installed $FOUND font file(s) to: $TARGET"
 ls "$TARGET"
 
 echo
-echo "== 2. Write fontconfig (MiSans first, Noto as fallback) =="
+echo "== 2. Write fontconfig (MiSans VF first, Noto as fallback) =="
 FONT_CONF="$HOME/.config/fontconfig/fonts.conf"
 mkdir -p "$HOME/.config/fontconfig"
 if [ -f "$FONT_CONF" ]; then
@@ -75,14 +75,25 @@ cat > "$FONT_CONF" <<'EOF'
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
-  <!-- MiSans first for everything. Both spellings are listed because
-       the downloaded family may be named "MiSans" or "MiSans VF";
-       fontconfig silently ignores names that are not installed. -->
+  <!-- VF first for everything CJK. "MiSans VF" is the variable
+       font for Simplified Chinese, "MiSans TC VF" for Traditional
+       Chinese (the "Misans TC VF" spelling is also listed because
+       some sources spell it that way; fontconfig silently ignores
+       names that are not installed). Static MiSans / MiSans TC
+       stay second, Noto stays as fallback after them.
+       Note on Noto VF: Noto CJK variable-font packages share the
+       same family names as the static ones ("Noto Sans CJK JP",
+       etc.), so they cannot be forced by name alone. If the VF
+       package is installed instead of the static one, that VF
+       will be used automatically under the same name. -->
   <alias>
     <family>sans-serif</family>
     <prefer>
-      <family>MiSans</family>
       <family>MiSans VF</family>
+      <family>MiSans TC VF</family>
+      <family>Misans TC VF</family>
+      <family>MiSans</family>
+      <family>MiSans TC</family>
       <family>Noto Sans</family>
       <family>Noto Sans CJK JP</family>
       <family>Noto Sans CJK KR</family>
@@ -108,36 +119,45 @@ cat > "$FONT_CONF" <<'EOF'
     </prefer>
   </alias>
 
-  <!-- Per-language strong prepends. Noto stays second in each list,
-       so a glyph MiSans does not have falls back to Noto, not to
+  <!-- Per-language strong prepends, in priority order (fontconfig
+       "prepend" keeps document order here, verified locally).
+       VF first, static second, Noto fallback last, so a glyph
+       the VF does not have falls back to Noto, not to
        AR PL New Sung. -->
   <match target="pattern">
     <test qual="any" name="family"><string>sans-serif</string></test>
     <test qual="any" name="lang" compare="contains"><string>ja</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>MiSans VF</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>MiSans</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK JP</string></edit>
   </match>
   <match target="pattern">
     <test qual="any" name="family"><string>sans-serif</string></test>
     <test qual="any" name="lang" compare="contains"><string>ko</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>MiSans VF</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>MiSans</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK KR</string></edit>
   </match>
   <match target="pattern">
     <test qual="any" name="family"><string>sans-serif</string></test>
     <test qual="any" name="lang" compare="contains"><string>zh-cn</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>MiSans VF</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>MiSans</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK SC</string></edit>
   </match>
   <match target="pattern">
     <test qual="any" name="family"><string>sans-serif</string></test>
     <test qual="any" name="lang" compare="contains"><string>zh-tw</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>MiSans TC VF</string></edit>
+    <edit name="family" mode="prepend" binding="strong"><string>Misans TC VF</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>MiSans TC</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK TC</string></edit>
   </match>
   <match target="pattern">
     <test qual="any" name="family"><string>sans-serif</string></test>
     <test qual="any" name="lang" compare="contains"><string>zh-hk</string></test>
+    <edit name="family" mode="prepend" binding="strong"><string>MiSans TC VF</string></edit>
+    <edit name="family" mode="prepend" binding="strong"><string>Misans TC VF</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>MiSans TC</string></edit>
     <edit name="family" mode="prepend" binding="strong"><string>Noto Sans CJK TC</string></edit>
   </match>
@@ -161,8 +181,9 @@ echo "Wrote: $FONT_CONF"
 echo
 echo "== 3. Rebuild cache and verify =="
 fc-cache -fv >/dev/null
-echo "--- Installed MiSans families ---"
+echo "--- Installed MiSans families (VF should appear if MiSans.zip was used) ---"
 fc-list | grep -i "MiSans" | sed 's/:.*style.*//' | sort -u || echo "(none found -- check the zip contents)"
+fc-list | grep -i "MiSans.*VF" | sed 's/:.*style.*//' | sort -u || echo "(no VF family found -- check that MiSans.zip, not a static-only zip, was used)"
 echo "--- First match per language ---"
 for lang in ja ko zh-cn zh-tw; do
     printf '%-6s -> ' "$lang"
@@ -190,7 +211,7 @@ echo " the author's machine. See the header comment.)"
 echo
 echo "Done. Restart open apps to see it. No reboot needed."
 echo "Then in KDE: System Settings > Appearance > Fonts > set the"
-echo "interface font to MiSans, so apps asking for the UI font get it"
+echo "interface font to MiSans VF, so apps asking for the UI font get it"
 echo "directly instead of only via fallback."
 echo "KDE apps already running may need a logout/login to pick up"
 echo "the new Xft settings."

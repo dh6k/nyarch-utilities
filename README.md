@@ -123,11 +123,13 @@ where Japanese / Simplified Chinese fall back to `AR PL New Sung`
 1. Extracts every `.ttf`/`.otf` from the given MiSans zip(s) to
    `~/.local/share/fonts/MiSans` (per-user, no sudo needed for install)
 2. Backs up an existing `~/.config/fontconfig/fonts.conf` with a
-   timestamp, then writes a new one: MiSans first for `sans-serif`,
-   Noto kept behind it as fallback
-3. Adds strong per-language prepends: `ja` -> MiSans + Noto Sans CJK JP,
-   `ko` -> MiSans + Noto Sans CJK KR, `zh-cn` -> MiSans + Noto Sans CJK SC,
-   `zh-tw`/`zh-hk` -> MiSans TC + Noto Sans CJK TC
+   timestamp, then writes a new one: MiSans VF first for `sans-serif`,
+   static MiSans second, Noto kept behind it as fallback
+3. Adds strong per-language prepends, VF first:
+   `ja` -> MiSans VF + MiSans + Noto Sans CJK JP,
+   `ko` -> MiSans VF + MiSans + Noto Sans CJK KR,
+   `zh-cn` -> MiSans VF + MiSans + Noto Sans CJK SC,
+   `zh-tw`/`zh-hk` -> MiSans TC VF + MiSans TC + Noto Sans CJK TC
 4. Sets rendering in the same `fonts.conf`, verified on the
    author's 15.6" Nyarch laptop: anti-aliasing on,
    `hintstyle: hintslight`, `rgba: none`, `lcdfilter: lcdnone`
@@ -141,13 +143,13 @@ where Japanese / Simplified Chinese fall back to `AR PL New Sung`
 
 ```bash
 chmod +x install-misans.sh
-./install-misans.sh ~/Downloads/Misans.zip
+./install-misans.sh ~/Downloads/MiSans.zip
 # multiple zips at once, e.g. MiSans + MiSans TC:
-./install-misans.sh ~/Downloads/Misans.zip ~/Downloads/Misans-TC.zip
+./install-misans.sh ~/Downloads/MiSans.zip ~/Downloads/MiSans-TC.zip
 ```
 
 Then restart apps that were already open (no reboot needed), and in
-KDE set System Settings > Appearance > Fonts to MiSans so apps asking
+KDE set System Settings > Appearance > Fonts to MiSans VF so apps asking
 for the UI font get it directly instead of only via fallback.
 
 ### Notes
@@ -163,9 +165,15 @@ for the UI font get it directly instead of only via fallback.
   does not have falls through to Noto, not to tofu or AR PL New Sung.
 - Check the result with `fc-match "sans-serif:lang=ja"`,
   `fc-match "sans-serif:lang=ko"`, `fc-match "sans-serif:lang=zh-cn"`.
-- The downloaded family may be named `MiSans` or `MiSans VF`
-  (variable font); both names are listed in the config, fontconfig
-  ignores the one that is not installed.
+- VF first: `MiSans VF` is the variable font for Simplified
+  Chinese, `MiSans TC VF` for Traditional Chinese. Static MiSans /
+  MiSans TC stay second in case a glyph is missing from the VF.
+  Noto CJK variable-font packages share the same family names as
+  the static ones, so they cannot be forced by name alone — if the
+  VF package is installed instead of the static one, that VF will
+  be used automatically under the same name. [Unverified on the
+  author's machine: check with `fc-list | grep -i "CJK"` to see
+  which families are actually installed there.]
 - Rendering tuning: `rgba: rgb` + `hintmedium` was tried first
   and looked bad on the author's machine (colour fringing /
   uneven strokes at 11pt), and `hintmedium` + `rgba: none` still
