@@ -185,3 +185,61 @@ for the UI font get it directly instead of only via fallback.
   Do not tick KDE's "Exclude range from anti-aliasing"
   with the default 8-15pt range: UI fonts at 9-11pt sit inside it,
   so it would switch anti-aliasing off exactly for the UI.
+
+## install-sddm-misans-font.fish
+
+Sync the SDDM greeter (breeze theme, X11) to MiSans VF and to
+125% scale, matching the KDE UI font and Plasma scale set by
+`install-misans.sh`.
+
+SDDM runs before login, so it does not read `~/.local/share/fonts`
+or the user's `kdeglobals`. It only reads system-wide fonts and its
+own config. This script therefore:
+
+1. Copies MiSans fonts from `~/.local/share/fonts/MiSans` to
+   `/usr/share/fonts/MiSans` (system-wide, so SDDM/root can see them)
+2. Copies `~/.config/fontconfig/fonts.conf` to
+   `/etc/fonts/local.conf` (system-wide rendering + VF-first prefer,
+   backing up an existing file with a timestamp)
+3. Rebuilds the font cache and verifies `MiSans VF` is visible
+   system-wide with `fc-list`
+4. Writes `/etc/sddm.conf.d/99-font.conf` with
+   `[Theme] Font=MiSans VF` (a separate drop-in, sorted after
+   `kde_settings.conf`, so KDE rewriting that file does not
+   silently drop the font setting)
+5. Writes `/etc/sddm.conf.d/99-hidpi.conf` with 125% scale for the
+   X11 greeter:
+   `[General] GreeterEnvironment=QT_AUTO_SCREEN_SCALE_FACTOR=0,QT_SCALE_FACTOR=1.25,QT_FONT_DPI=96`
+   plus `[X11] ServerArguments=-nolisten tcp` and `EnableHiDPI=true`.
+   Verified on the author's machine (2026-10-30): X `ServerArguments`
+   with `-dpi 120` alone did NOT scale the Qt6 greeter (X still ran
+   with `-dpi 120`, the greeter still looked 100%); the Qt scale
+   factor above is what actually scaled it to 125%, and removing
+   `-dpi 120` afterwards kept 125%, so this script does not use
+   `-dpi 120` at all. Change `QT_SCALE_FACTOR` if the Plasma scale
+   changes from 125%.
+
+Requires `install-misans.sh` to have been run first with
+`MiSans.zip`, so the per-user fonts and `fonts.conf` exist.
+
+### Usage (fish)
+
+```fish
+fish install-sddm-misans-font.fish
+# or, after chmod +x:
+./install-sddm-misans-font.fish
+```
+
+The script does NOT restart SDDM (that would log out the current
+session). Preview first, without logging out:
+
+```bash
+sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/breeze
+```
+
+Then logout or reboot to see the real greeter. Note: this syncs
+the font family (MiSans VF), not the size — greeter font size
+comes from the theme, not from KDE's 11pt UI font. Also note:
+`--test-mode` runs inside the current session, so it does NOT
+reflect the greeter's real scale; only a logout/reboot to the
+real greeter verifies the 125% scale.
