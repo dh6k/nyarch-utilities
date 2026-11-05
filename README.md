@@ -243,3 +243,69 @@ comes from the theme, not from KDE's 11pt UI font. Also note:
 `--test-mode` runs inside the current session, so it does NOT
 reflect the greeter's real scale; only a logout/reboot to the
 real greeter verifies the 125% scale.
+
+## install-doh.sh
+
+System-wide DNS over HTTPS (DoH) for every app, not just the browser.
+
+`systemd-resolved` does NOT support DoH natively (only DoT), so this
+script wires it through `dnscrypt-proxy`:
+
+```
+apps -> systemd-resolved (127.0.0.53) -> dnscrypt-proxy (127.0.0.1:53)
+     -> upstream DoH over https://<your-host>/dns-query (port 443)
+```
+
+### What it does
+
+1. Installs `dnscrypt-proxy` via pacman
+2. Turns the DoH URL you give into a DNS stamp (`sdns://...`) for
+   dnscrypt-proxy's `[static]` section. The stamp generator is pure
+   bash + `base64` (no python), and was verified against the published
+   Cloudflare / Quad9 stamps. The stamp carries an empty `addr` on
+   purpose: baking one IP at install time freezes it, and a stale /
+   hijacked answer would break DoH afterwards. dnscrypt-proxy resolves
+   the hostname at runtime through `fallback_resolver` (1.1.1.1:53,
+   bootstrap only -- real queries still go over DoH)
+3. Writes `/etc/dnscrypt-proxy/dnscrypt-proxy.toml` (backing up the
+   old one with a timestamp) with `listen_addresses = 127.0.0.1:53`,
+   `doh_servers = true`, `require_dnssec = true`, and validates it
+   with `dnscrypt-proxy -check` before starting anything
+4. Writes `/etc/systemd/resolved.conf.d/dnscrypt-proxy.conf` with
+   `DNS=127.0.0.1`, an intentionally empty `FallbackDNS` (fail closed
+   instead of leaking plain DNS if the proxy is down), and
+   `Domains=~.` so every domain routes through the proxy even when
+   NetworkManager pushes per-link DNS
+5. Starts `dnscrypt-proxy.service` (socket activation off -- the
+   service binds 127.0.0.1:53 itself), restarts `systemd-resolved`,
+   and verifies with `resolvectl query archlinux.org`. On a failed
+   verification it restores the backups automatically
+
+### Usage
+
+```bash
+chmod +x install-doh.sh
+./install-doh.sh https://dns.cloudflare.com/dns-query
+./install-doh.sh https://dns.nextdns.io/<your-id>   # NextDNS, no /dns-query suffix
+./install-doh.sh cloudflare|quad9|google|adguard   # preset
+./install-doh.sh                                    # prompt interactively
+./install-doh.sh --dry-run <url-or-preset>          # print the generated config, change nothing
+./install-doh.sh --check                            # verify the current setup
+./install-doh.sh --uninstall                        # remove the drop-in, stop the proxy, restore DNS
+```
+
+### Notes
+
+- DoH only hides the DNS query contents. It does NOT hide the
+  destination IP / SNI of your connections; for that you need a VPN
+  or Tor, not DoH.
+- The stamp claims DNSSEC only (`props=1`). NoLog / NoFilter are
+  not claimed for an arbitrary URL, since the provider's
+  logging/filtering policy is unknown.
+- This script does NOT touch Firefox / Helium DoH settings -- those
+  are per-browser and independent. System DoH already covers the
+  browser unless the browser is set to its own DoH resolver.
+- `dnscrypt-proxy` is NOT tested on this VM (it is Arch-only tooling);
+  run `--dry-run` first, then test on the real Nyarch machine with
+  `./install-doh.sh --check` and `journalctl -u dnscrypt-proxy`
+  (look for `OK (DoH)`).
