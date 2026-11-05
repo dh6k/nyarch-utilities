@@ -265,8 +265,11 @@ apps -> systemd-resolved (127.0.0.53) -> dnscrypt-proxy (127.0.0.1:53)
    Cloudflare / Quad9 stamps. The stamp carries an empty `addr` on
    purpose: baking one IP at install time freezes it, and a stale /
    hijacked answer would break DoH afterwards. dnscrypt-proxy resolves
-   the hostname at runtime through `fallback_resolver` (1.1.1.1:53,
-   bootstrap only -- real queries still go over DoH)
+   the hostname at runtime through `bootstrap_resolvers`
+   (8.8.8.8:53, 1.1.1.1:53, bootstrap only -- real queries still
+   go over DoH). dnscrypt-proxy 2.1 renamed the old
+   `fallback_resolver` key to `bootstrap_resolvers`; the old name
+   is rejected with `[FATAL] Unsupported key` on 2.1.20
 3. Writes `/etc/dnscrypt-proxy/dnscrypt-proxy.toml` (backing up the
    old one with a timestamp) with `listen_addresses = 127.0.0.1:53`,
    `doh_servers = true`, `require_dnssec = true`, and validates it
