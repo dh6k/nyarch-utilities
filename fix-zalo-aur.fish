@@ -6,9 +6,11 @@
 # Script này không hardcode hash: nó hỏi GitHub API lấy tên asset mới nhất
 # của đúng tag trong PKGBUILD, sửa _commithash, chạy updpkgsums rồi build.
 #
-# Đã verify 2026-11-09 01:47 +07:
-#   tag 26.11.10 -> d4452e1, sha256 x86_64 =
-#   35c6e37adfdb96546cd0e003d644950945e1d880425c13cb09f8f23e42244d30
+# Đã verify 2026-11-09 01:54 +07 (snapshot, upstream thay liên tục):
+#   tag 26.11.10 -> 3680a0e, sha256 x86_64 =
+#   1c5d02c22c83ea6d9684857da8683bc4154de911f1337e5ac0d06c874a4f23b9
+#   (07 phút trước, 01:47, vẫn là d4452e1 / 35c6e37a…44d30 — đã bị thay.
+#   Đừng hardcode hash, script tự dò lại lúc chạy.)
 #
 # Cách dùng (fish, trên Nyarch):
 #   fish ~/workspace/your_files/fix-zalo-aur.fish

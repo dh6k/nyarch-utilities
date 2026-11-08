@@ -348,10 +348,20 @@ fish fix-zalo-aur.fish --no-build   # only fix the PKGBUILD, don't install
 fish fix-zalo-aur.fish --dir ~/build/zalo-for-linux-bin
 ```
 
+Bash version, same logic, for machines without fish:
+`fix-zalo-aur.sh` (`bash fix-zalo-aur.sh`, same `--no-build` /
+`--dir` flags). Do NOT run the `.fish` file with bash — fish syntax
+(`set -l`, `switch`, `or begin`) is not bash.
+
 ### Verified
 
-- 2026-11-09 01:47 +07: tag `26.11.10` -> hash `d4452e1`,
-  sha256 x86_64 `35c6e37adfdb96546cd0e003d644950945e1d880425c13cb09f8f23e42244d30`
+- 2026-11-09 01:54 +07: tag `26.11.10` -> hash `3680a0e`,
+  sha256 x86_64 `1c5d02c22c83ea6d9684857da8683bc4154de911f1337e5ac0d06c874a4f23b9`
+- 2026-11-09 01:47 +07: same tag was `d4452e1`,
+  sha256 `35c6e37adfdb96546cd0e003d644950945e1d880425c13cb09f8f23e42244d30`
+  — superseded within ~7 minutes. That is why the scripts fetch the
+  hash live instead of hardcoding it; any hash/sha256 written here
+  is a snapshot only.
 - The fix is local only: the AUR PKGBUILD still needs its maintainer
   to bump `_commithash` + `pkgrel`, or upstream to stop replacing
   assets under the same tag. Flag the AUR package out-of-date if it
