@@ -312,3 +312,47 @@ chmod +x install-doh.sh
   run `--dry-run` first, then test on the real Nyarch machine with
   `./install-doh.sh --check` and `journalctl -u dnscrypt-proxy`
   (look for `OK (DoH)`).
+
+## fix-zalo-aur.fish
+
+Fix `zalo-for-linux-bin` failing to build with a 404 from GitHub.
+
+### Root cause
+
+Upstream (`VN-Linux-Family/zalo-for-linux`) replaces the release asset
+under the same tag without a new release: the commit hash embedded in
+the AppImage filename changes (e.g. `3c3b891` -> `d4452e1`), so the
+`_commithash` pinned in the AUR PKGBUILD points at a URL that no
+longer exists. This has happened repeatedly (first reported 2026-07-26
+for 26.7.10, again 2026-11-09 for 26.11.10).
+
+### What it does
+
+1. Clones / updates the AUR repo into `~/build/zalo-for-linux-bin`
+   (or `--dir <path>`)
+2. Reads `pkgver` from the PKGBUILD and asks the GitHub API for that
+   tag's current `ZaDark` x86_64 asset name — no hardcoded hash
+3. Parses the new commit hash from the filename, updates
+   `_commithash` in the PKGBUILD, and runs `updpkgsums` to regenerate
+   the sha256 (downloads the ~155 MB AppImage)
+4. Builds and installs with `makepkg -si` (skipped with `--no-build`)
+
+Re-running it fixes the next replacement too, for as long as upstream
+keeps replacing assets under the same tag.
+
+### Usage (fish)
+
+```fish
+fish fix-zalo-aur.fish
+fish fix-zalo-aur.fish --no-build   # only fix the PKGBUILD, don't install
+fish fix-zalo-aur.fish --dir ~/build/zalo-for-linux-bin
+```
+
+### Verified
+
+- 2026-11-09 01:47 +07: tag `26.11.10` -> hash `d4452e1`,
+  sha256 x86_64 `35c6e37adfdb96546cd0e003d644950945e1d880425c13cb09f8f23e42244d30`
+- The fix is local only: the AUR PKGBUILD still needs its maintainer
+  to bump `_commithash` + `pkgrel`, or upstream to stop replacing
+  assets under the same tag. Flag the AUR package out-of-date if it
+  404s again.
