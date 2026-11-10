@@ -366,3 +366,62 @@ Bash version, same logic, for machines without fish:
   to bump `_commithash` + `pkgrel`, or upstream to stop replacing
   assets under the same tag. Flag the AUR package out-of-date if it
   404s again.
+
+## set-fastfetch-logo.fish
+
+Point fastfetch's logo at an image without losing the image later.
+
+### Root cause
+
+Pointing `logo.source` straight at `~/Downloads` or `/tmp` works
+until the next cleanup / reboot, and then fastfetch loses its logo.
+An image kept inside a git checkout is no safer: another checkout,
+`git clean`, or a new machine drops it just as easily.
+
+### What it does
+
+1. Copies the image you give it to one fixed, rarely-cleaned place:
+   `~/.local/share/fastfetch/<original filename>`
+   (XDG data dir — survives config edits, cache cleanups, and
+   wallpaper changes)
+2. Sets `"logo": { "source": ... }` in
+   `~/.config/fastfetch/config.jsonc` to that copied file, editing
+   only the `source` value and keeping the rest of the file —
+   comments and formatting included (the edit is done with python3,
+   which is only used as a JSONC-aware text editor here)
+
+Safety:
+
+- The old destination image and the old config are both backed up
+  as `.bak.<timestamp>` before being overwritten
+- Re-running with the same image is a no-op (no extra backups)
+- `--dry-run` prints what would happen and touches nothing
+- After editing, the config is re-validated as JSONC; on failure the
+  backup is restored and the script exits with an error
+- `--restore` puts the config back from its newest backup
+- It never creates a fresh `config.jsonc` from scratch: a file with
+  only a logo would silently replace fastfetch's default modules.
+  If there is no config yet, run `fastfetch --gen-config` first
+- It deliberately does not touch `logo.type` — if the image does not
+  show, check whether the terminal supports kitty/sixel first
+
+### Usage (fish)
+
+```fish
+fish set-fastfetch-logo.fish ~/Downloads/duyako-avatar-4-flat-transparent.png
+fish set-fastfetch-logo.fish ~/Pictures/logo.png --name duyako.png
+fish set-fastfetch-logo.fish ~/Pictures/logo.png --dry-run
+fish set-fastfetch-logo.fish --restore
+```
+
+Then run `fastfetch` to check the logo shows up.
+
+### Verified
+
+- 2026-11-10 (VM, simulated `config.jsonc` only — not yet run on a
+  real Nyarch machine): existing `source` replaced, `logo` without
+  `source` gained one, config without `logo` gained a `logo` block,
+  re-run is a no-op, `--dry-run` writes nothing, overwriting a
+  different destination image backs it up, `--restore` restores the
+  config, missing config / non-image file / `logo` as a string all
+  exit with an error instead of mangling the config.
