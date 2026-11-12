@@ -148,16 +148,17 @@ the original `python-pywal` is dead and gone from the repos.
 chmod +x sync-pywal-kitty.sh
 ./sync-pywal-kitty.sh ~/Pictures/wallpaper.jpg
 ./sync-pywal-kitty.sh ~/Pictures/wallpaper.jpg --backend colorthief --light
+./sync-pywal-kitty.sh ~/Pictures/wallpaper.jpg --opacity 0.85
 ./sync-pywal-kitty.sh --restore   # after reboot/login, re-apply the last scheme
 ./sync-pywal-kitty.sh --check     # report wal/kitty/include state, change nothing
 ./sync-pywal-kitty.sh --dry-run ~/Pictures/wallpaper.jpg
 ```
 
 Options: `--backend <name>`, `--light`, `--saturate <0.0-1.0>`,
-`--set-wallpaper` (let wal set the wallpaper too — off by default),
-`--no-reload`, `--install-deps` (install `python-pywal16` via paru/yay if
-`wal` is missing), `--enable-remote-control`, `--restore`, `--check`,
-`--dry-run`, `-h` / `--help`.
+`--opacity <0.0-1.0>`, `--set-wallpaper` (let wal set the wallpaper too —
+off by default), `--no-reload`, `--install-deps` (install `python-pywal16`
+via paru/yay if `wal` is missing), `--enable-remote-control`, `--restore`,
+`--check`, `--dry-run`, `-h` / `--help`.
 
 ### Notes
 
@@ -166,6 +167,16 @@ Options: `--backend <name>`, `--light`, `--saturate <0.0-1.0>`,
   Otherwise running windows keep the old colors until Ctrl+Shift+F5
   (reload config) or a restart — new windows are fine either way, and the
   script says so instead of failing.
+- Transparency is not part of the pywal palette: `wal` never emits it for
+  kitty (its `-a` flag only works in URxvt). `--opacity <0.0-1.0>` manages
+  it as a kitty setting instead — it sets `background_opacity` in
+  `kitty.conf` (replacing the old value, never duplicating it) and enables
+  `dynamic_background_opacity yes` so running windows can take the new
+  value live via `kitty @ set-background-opacity --all <v>`. That live
+  call only works if `dynamic_background_opacity` was already enabled
+  when the running kitty started; otherwise the value still applies on
+  the next Ctrl+Shift+F5 / new window. Without `--opacity` the script
+  leaves any existing opacity alone.
 - `--enable-remote-control` appends `allow_remote_control socket-only` +
   `listen_on unix:/tmp/kitty` to `kitty.conf`, so later runs from Konsole,
   a hook, or autostart can live-reload kitty too. It needs a kitty restart

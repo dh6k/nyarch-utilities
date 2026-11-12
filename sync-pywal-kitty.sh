@@ -18,6 +18,14 @@
 #      set, or when a listen socket exists (see --enable-remote-control).
 #      If none of those applies, running windows keep the old colors until
 #      Ctrl+Shift+F5 (reload config) or a restart — new windows are fine.
+#   4. Transparency is NOT part of the palette: wal never emits it for
+#      kitty (its -a flag only works in URxvt). --opacity manages it as a
+#      kitty setting instead: `background_opacity <v>` in kitty.conf, plus
+#      `dynamic_background_opacity yes` so running windows can take it live
+#      via `kitty @ set-background-opacity --all <v>`. That live call only
+#      works if dynamic_background_opacity was already enabled when the
+#      running kitty started — otherwise the value still applies on the
+#      next config reload / new window.
 #
 # pywal here means pywal16 (eylles/pywal16), the maintained fork. The
 # original dylanaraps/pywal is archived; on Arch the package is
@@ -38,6 +46,7 @@ WALLPAPER=""
 BACKEND=""
 LIGHT=0
 SATURATE=""
+OPACITY=""
 SET_WALLPAPER=0
 NO_RELOAD=0
 DRY_RUN=0
@@ -63,6 +72,10 @@ Options:
   --backend <name>        Pass --backend to wal (list with: wal --backend)
   --light                 Light colorscheme (wal -l)
   --saturate <0.0-1.0>    Pass --saturate to wal
+  --opacity <0.0-1.0>     Set kitty background_opacity (e.g. 0.85) in
+                          kitty.conf and live-apply it to running windows
+                          when possible (needs dynamic_background_opacity,
+                          which this also enables for next time)
   --set-wallpaper         Let wal set the wallpaper too (default: -n, skip it;
                           Plasma owns the wallpaper on Nyarch)
   --no-reload             Skip the live kitty @ set-colors reload attempt
@@ -81,6 +94,7 @@ Options:
 Examples:
   $0 ~/Pictures/wallpaper.jpg
   $0 ~/Pictures/wallpaper.jpg --backend colorthief --light
+  $0 ~/Pictures/wallpaper.jpg --opacity 0.85
   $0 --restore        # after reboot / login, re-apply last scheme
   $0 --check
 EOF
@@ -143,20 +157,64 @@ ensure_kitty_conf_line() {
     log "appended to $KITTY_CONF (backup: $bak)"
 }
 
+# Set `key value` in kitty.conf: replace the existing uncommented line if
+# there is one, else append it. Backs the file up first, only when modifying.
+# No-op when the line already has exactly this value.
+set_kitty_conf_value() {
+    local key="$1" value="$2"
+    local line="$key $value"
+    mkdir -p "$(dirname "$KITTY_CONF")"
+    if [[ ! -f "$KITTY_CONF" ]]; then
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "[dry-run] would create $KITTY_CONF with: $line"
+            return 0
+        fi
+        printf '%s\n' "# created by sync-pywal-kitty.sh" "$line" > "$KITTY_CONF"
+        log "created $KITTY_CONF"
+        return 0
+    fi
+    if grep -qxF "$line" "$KITTY_CONF" 2>/dev/null; then
+        return 0
+    fi
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[dry-run] would set in $KITTY_CONF: $line"
+        return 0
+    fi
+    local bak="$KITTY_CONF.bak.$(date +%Y%m%d-%H%M%S-%N)"
+    cp "$KITTY_CONF" "$bak"
+    if grep -q "^$key[[:space:]]" "$KITTY_CONF" 2>/dev/null; then
+        sed -i "s/^$key[[:space:]].*/$line/" "$KITTY_CONF"
+        log "set $line in $KITTY_CONF (backup: $bak)"
+    else
+        printf '%s\n' "" "# added by sync-pywal-kitty.sh" "$line" >> "$KITTY_CONF"
+        log "appended to $KITTY_CONF (backup: $bak)"
+    fi
+}
+
 # Try to push the new colors into running kitty windows. Returns 0 on
 # success, 1 when no live instance was reachable (not an error: new
-# windows still get the colors via the include).
+# windows still get the colors via the include). When $OPACITY is set it
+# also tries set-background-opacity; that part failing is only a warning
+# (the config value still applies on reload / new window).
 reload_kitty() {
     command -v kitty >/dev/null 2>&1 || { warn "kitty not found — skipping live reload (new windows still get colors via the include)."; return 1; }
+    local to_args=()
     if kitty @ set-colors --all --configured "$COLORS_KITTY" 2>/dev/null; then
         log "live-reloaded all kitty windows (kitty @ set-colors --all --configured)"
-        return 0
-    fi
-    if [[ -S "$SOCKET" ]] && kitty @ --to "unix:$SOCKET" set-colors --all --configured "$COLORS_KITTY" 2>/dev/null; then
+    elif [[ -S "$SOCKET" ]] && kitty @ --to "unix:$SOCKET" set-colors --all --configured "$COLORS_KITTY" 2>/dev/null; then
         log "live-reloaded all kitty windows via unix:$SOCKET"
-        return 0
+        to_args=(--to "unix:$SOCKET")
+    else
+        return 1
     fi
-    return 1
+    if [[ -n "$OPACITY" ]]; then
+        if kitty @ "${to_args[@]}" set-background-opacity --all "$OPACITY" 2>/dev/null; then
+            log "live-applied background opacity $OPACITY to all kitty windows"
+        else
+            warn "could not live-apply opacity (dynamic_background_opacity must have been enabled when this kitty started) — the $OPACITY value in kitty.conf applies on the next Ctrl+Shift+F5 / new window."
+        fi
+    fi
+    return 0
 }
 
 do_check() {
@@ -176,6 +234,8 @@ do_check() {
         fi
         grep -q '^allow_remote_control' "$KITTY_CONF" 2>/dev/null && grep '^allow_remote_control' "$KITTY_CONF" | sed 's/^/  remote-control: /'
         grep -q '^listen_on' "$KITTY_CONF" 2>/dev/null && grep '^listen_on' "$KITTY_CONF" | sed 's/^/  listen_on: /'
+        grep -q '^background_opacity' "$KITTY_CONF" 2>/dev/null && grep '^background_opacity' "$KITTY_CONF" | sed 's/^/  opacity: /'
+        grep -q '^dynamic_background_opacity' "$KITTY_CONF" 2>/dev/null && grep '^dynamic_background_opacity' "$KITTY_CONF" | sed 's/^/  dynamic-opacity: /'
     else
         log "kitty.conf: missing (will be created on next sync)"
     fi
@@ -201,6 +261,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || die "--saturate needs a value"
             SATURATE="$2"; shift 2 ;;
         --saturate=*) SATURATE="${1#--saturate=}"; shift ;;
+        --opacity)
+            [[ $# -ge 2 ]] || die "--opacity needs a value (0.0-1.0)"
+            OPACITY="$2"; shift 2 ;;
+        --opacity=*) OPACITY="${1#--opacity=}"; shift ;;
         --set-wallpaper) SET_WALLPAPER=1; shift ;;
         --no-reload) NO_RELOAD=1; shift ;;
         --enable-remote-control) ENABLE_RC=1; shift ;;
@@ -218,6 +282,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ -n "$OPACITY" ]] && ! [[ "$OPACITY" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
+    die "--opacity must be a number from 0.0 to 1.0, got: $OPACITY"
+fi
+
 if [[ "$CHECK" == "1" ]]; then
     do_check
     exit 0
@@ -229,6 +297,10 @@ if [[ "$DRY_RUN" == "1" ]]; then
     [[ "$RESTORE" == "1" ]] && log "[dry-run] would run: wal -R"
     log "[dry-run] would ensure $KITTY_CONF contains: $INCLUDE_LINE"
     [[ "$ENABLE_RC" == "1" ]] && log "[dry-run] would ensure $KITTY_CONF contains: allow_remote_control socket-only + listen_on unix:/tmp/kitty"
+    if [[ -n "$OPACITY" ]]; then
+        log "[dry-run] would set in $KITTY_CONF: background_opacity $OPACITY + dynamic_background_opacity yes"
+        [[ "$NO_RELOAD" == "0" ]] && log "[dry-run] would try: kitty @ set-background-opacity --all $OPACITY"
+    fi
     [[ "$NO_RELOAD" == "0" ]] && log "[dry-run] would try: kitty @ set-colors --all --configured $COLORS_KITTY"
     exit 0
 fi
@@ -260,6 +332,11 @@ fi
 [[ -f "$COLORS_KITTY" ]] || die "wal ran but $COLORS_KITTY was not created — check that this is pywal16 (python-pywal16), not another wal"
 
 ensure_kitty_conf_line "$INCLUDE_LINE" "keep last so it wins over colors above"
+
+if [[ -n "$OPACITY" ]]; then
+    set_kitty_conf_value "background_opacity" "$OPACITY"
+    set_kitty_conf_value "dynamic_background_opacity" "yes"
+fi
 
 if [[ "$NO_RELOAD" == "0" ]]; then
     if ! reload_kitty; then
