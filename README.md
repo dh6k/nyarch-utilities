@@ -167,16 +167,25 @@ via paru/yay if `wal` is missing), `--enable-remote-control`, `--restore`,
   Otherwise running windows keep the old colors until Ctrl+Shift+F5
   (reload config) or a restart — new windows are fine either way, and the
   script says so instead of failing.
-- Transparency is not part of the pywal palette: `wal` never emits it for
-  kitty (its `-a` flag only works in URxvt). `--opacity <0.0-1.0>` manages
-  it as a kitty setting instead — it sets `background_opacity` in
-  `kitty.conf` (replacing the old value, never duplicating it) and enables
-  `dynamic_background_opacity yes` so running windows can take the new
-  value live via `kitty @ set-background-opacity --all <v>`. That live
-  call only works if `dynamic_background_opacity` was already enabled
-  when the running kitty started; otherwise the value still applies on
-  the next Ctrl+Shift+F5 / new window. Without `--opacity` the script
-  leaves any existing opacity alone.
+- Transparency has a trap: pywal16's kitty template emits its own
+  `background_opacity {background.alpha_dec}` line, and alpha defaults to
+  100 — so `~/.cache/wal/colors-kitty.conf` contains
+  `background_opacity 1.0`. Kitty takes the last setting in the file, so
+  an opacity line sitting above the `include` is silently overridden by
+  the template (this is what turned a 0.82 kitty opaque after the first
+  sync). The script therefore always puts `background_opacity` AFTER the
+  include line: `--opacity <0.0-1.0>` writes it there, and a plain sync
+  moves any opacity you already had to after the include instead of
+  letting the template stomp it. `wal -a` is not a durable fix — the
+  colors here come from KDE Material You Colors ("Apply to Pywal"), which
+  rewrites `colors.json` with alpha 100 on every wallpaper change. `--check`
+  shows both the template's opacity and the effective one in `kitty.conf`.
+  `--opacity` also enables `dynamic_background_opacity yes`, so running
+  windows can take the new value live via
+  `kitty @ set-background-opacity --all <v>` (fallback:
+  `kitty @ load-config`). That live call only works if remote control was
+  already on when the running kitty started; otherwise the value still
+  applies on the next Ctrl+Shift+F5 / new window.
 - `--enable-remote-control` appends `allow_remote_control socket-only` +
   `listen_on unix:/tmp/kitty` to `kitty.conf`, so later runs from Konsole,
   a hook, or autostart can live-reload kitty too. It needs a kitty restart

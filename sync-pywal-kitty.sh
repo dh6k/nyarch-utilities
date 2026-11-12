@@ -18,14 +18,21 @@
 #      set, or when a listen socket exists (see --enable-remote-control).
 #      If none of those applies, running windows keep the old colors until
 #      Ctrl+Shift+F5 (reload config) or a restart — new windows are fine.
-#   4. Transparency is NOT part of the palette: wal never emits it for
-#      kitty (its -a flag only works in URxvt). --opacity manages it as a
-#      kitty setting instead: `background_opacity <v>` in kitty.conf, plus
-#      `dynamic_background_opacity yes` so running windows can take it live
-#      via `kitty @ set-background-opacity --all <v>`. That live call only
-#      works if dynamic_background_opacity was already enabled when the
-#      running kitty started — otherwise the value still applies on the
-#      next config reload / new window.
+#   4. Transparency: pywal16's kitty template DOES emit an opacity line —
+#      `background_opacity {background.alpha_dec}` — and alpha defaults to
+#      100, so colors-kitty.conf says `background_opacity 1.0`. Kitty takes
+#      the last setting in the file, so an opacity line ABOVE the include
+#      loses to the template. --opacity therefore puts `background_opacity
+#      <v>` AFTER the include, and a plain sync moves any opacity the user
+#      already had to after the include instead of letting the template
+#      silently override it. (`wal -a` is not a durable fix here: the
+#      colors.json here is written by KDE Material You Colors, which
+#      rewrites alpha 100 on every wallpaper change.)
+#      Live-apply: `dynamic_background_opacity yes` in kitty.conf plus
+#      `kitty @ set-background-opacity --all <v>` (falls back to
+#      `kitty @ load-config`). Either live call only works if remote
+#      control was already on when the running kitty started — otherwise
+#      the value still applies on the next config reload / new window.
 #
 # pywal here means pywal16 (eylles/pywal16), the maintained fork. The
 # original dylanaraps/pywal is archived; on Arch the package is
@@ -47,6 +54,8 @@ BACKEND=""
 LIGHT=0
 SATURATE=""
 OPACITY=""
+EFFECTIVE_OPACITY=""
+OPACITY_CHANGED=0
 SET_WALLPAPER=0
 NO_RELOAD=0
 DRY_RUN=0
@@ -73,9 +82,12 @@ Options:
   --light                 Light colorscheme (wal -l)
   --saturate <0.0-1.0>    Pass --saturate to wal
   --opacity <0.0-1.0>     Set kitty background_opacity (e.g. 0.85) in
-                          kitty.conf and live-apply it to running windows
-                          when possible (needs dynamic_background_opacity,
-                          which this also enables for next time)
+                          kitty.conf, placed AFTER the include line (the
+                          pywal template sets 1.0 — an opacity line above
+                          the include loses), and live-apply it to running
+                          windows when possible (needs
+                          dynamic_background_opacity, which this also
+                          enables for next time)
   --set-wallpaper         Let wal set the wallpaper too (default: -n, skip it;
                           Plasma owns the wallpaper on Nyarch)
   --no-reload             Skip the live kitty @ set-colors reload attempt
@@ -191,11 +203,47 @@ set_kitty_conf_value() {
     fi
 }
 
+# Put `background_opacity <value>` at the very end of kitty.conf, after the
+# include line. Needed because pywal16's kitty template emits
+# `background_opacity {background.alpha_dec}` (1.0 by default), and kitty
+# takes the last setting — an opacity line above the include loses.
+# Removes any existing background_opacity lines first, so there is exactly
+# one. No-op when the file already ends with exactly this line.
+set_opacity_after_include() {
+    local value="$1"
+    local line="background_opacity $value"
+    mkdir -p "$(dirname "$KITTY_CONF")"
+    if [[ ! -f "$KITTY_CONF" ]]; then
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "[dry-run] would create $KITTY_CONF with: $line"
+            return 0
+        fi
+        printf '%s\n' "# created by sync-pywal-kitty.sh" "$line" > "$KITTY_CONF"
+        OPACITY_CHANGED=1
+        log "created $KITTY_CONF"
+        return 0
+    fi
+    if [[ "$(tail -n 1 "$KITTY_CONF")" == "$line" ]]; then
+        return 0
+    fi
+    if [[ "$DRY_RUN" == "1" ]]; then
+        log "[dry-run] would move $line to the end of $KITTY_CONF (after the include)"
+        return 0
+    fi
+    local bak="$KITTY_CONF.bak.$(date +%Y%m%d-%H%M%S-%N)"
+    cp "$KITTY_CONF" "$bak"
+    sed -i '/^background_opacity[[:space:]]/d' "$KITTY_CONF"
+    printf '%s\n' "" "# added by sync-pywal-kitty.sh — must stay after the include (pywal template sets 1.0)" "$line" >> "$KITTY_CONF"
+    OPACITY_CHANGED=1
+    log "set $line at the end of $KITTY_CONF (backup: $bak)"
+}
+
 # Try to push the new colors into running kitty windows. Returns 0 on
 # success, 1 when no live instance was reachable (not an error: new
-# windows still get the colors via the include). When $OPACITY is set it
-# also tries set-background-opacity; that part failing is only a warning
-# (the config value still applies on reload / new window).
+# windows still get the colors via the include). When $EFFECTIVE_OPACITY
+# is set it also tries set-background-opacity, falling back to load-config
+# (which re-reads background_opacity from the file); either failing is only
+# a warning (the config value still applies on reload / new window).
 reload_kitty() {
     command -v kitty >/dev/null 2>&1 || { warn "kitty not found — skipping live reload (new windows still get colors via the include)."; return 1; }
     local to_args=()
@@ -207,11 +255,13 @@ reload_kitty() {
     else
         return 1
     fi
-    if [[ -n "$OPACITY" ]]; then
-        if kitty @ "${to_args[@]}" set-background-opacity --all "$OPACITY" 2>/dev/null; then
-            log "live-applied background opacity $OPACITY to all kitty windows"
+    if [[ -n "$EFFECTIVE_OPACITY" ]]; then
+        if kitty @ "${to_args[@]}" set-background-opacity --all "$EFFECTIVE_OPACITY" 2>/dev/null; then
+            log "live-applied background opacity $EFFECTIVE_OPACITY to all kitty windows"
+        elif kitty @ "${to_args[@]}" load-config 2>/dev/null; then
+            log "reloaded kitty config in running windows (background_opacity $EFFECTIVE_OPACITY applies live)"
         else
-            warn "could not live-apply opacity (dynamic_background_opacity must have been enabled when this kitty started) — the $OPACITY value in kitty.conf applies on the next Ctrl+Shift+F5 / new window."
+            warn "could not live-apply opacity (remote control must have been on when this kitty started) — the $EFFECTIVE_OPACITY value in kitty.conf applies on the next Ctrl+Shift+F5 / new window."
         fi
     fi
     return 0
@@ -223,6 +273,7 @@ do_check() {
     if [[ -f "$COLORS_KITTY" ]]; then
         log "colors: $COLORS_KITTY exists"
         grep -E '^(foreground|background|color0|color1) ' "$COLORS_KITTY" | head -4 | sed 's/^/  /'
+        grep '^background_opacity' "$COLORS_KITTY" 2>/dev/null | sed 's/^/  pywal-template opacity: /' || true
     else
         log "colors: $COLORS_KITTY missing — run with a wallpaper first"
     fi
@@ -298,8 +349,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
     log "[dry-run] would ensure $KITTY_CONF contains: $INCLUDE_LINE"
     [[ "$ENABLE_RC" == "1" ]] && log "[dry-run] would ensure $KITTY_CONF contains: allow_remote_control socket-only + listen_on unix:/tmp/kitty"
     if [[ -n "$OPACITY" ]]; then
-        log "[dry-run] would set in $KITTY_CONF: background_opacity $OPACITY + dynamic_background_opacity yes"
-        [[ "$NO_RELOAD" == "0" ]] && log "[dry-run] would try: kitty @ set-background-opacity --all $OPACITY"
+        log "[dry-run] would set at the end of $KITTY_CONF (after the include): background_opacity $OPACITY + dynamic_background_opacity yes"
+        [[ "$NO_RELOAD" == "0" ]] && log "[dry-run] would try: kitty @ set-background-opacity --all $OPACITY (fallback: kitty @ load-config)"
     fi
     [[ "$NO_RELOAD" == "0" ]] && log "[dry-run] would try: kitty @ set-colors --all --configured $COLORS_KITTY"
     exit 0
@@ -334,8 +385,20 @@ fi
 ensure_kitty_conf_line "$INCLUDE_LINE" "keep last so it wins over colors above"
 
 if [[ -n "$OPACITY" ]]; then
-    set_kitty_conf_value "background_opacity" "$OPACITY"
     set_kitty_conf_value "dynamic_background_opacity" "yes"
+    set_opacity_after_include "$OPACITY"
+    EFFECTIVE_OPACITY="$OPACITY"
+else
+    # No --opacity: keep whatever opacity the user already had, but it must
+    # sit after the include or the template's 1.0 wins.
+    existing_opacity="$(grep '^background_opacity[[:space:]]' "$KITTY_CONF" 2>/dev/null | tail -n 1 | awk '{print $2}' || true)"
+    if [[ -n "${existing_opacity:-}" ]]; then
+        set_opacity_after_include "$existing_opacity"
+        EFFECTIVE_OPACITY="$existing_opacity"
+        if [[ "$OPACITY_CHANGED" == "1" ]]; then
+            log "kept your background_opacity $existing_opacity (moved after the include — the pywal template sets 1.0 and would otherwise override it)"
+        fi
+    fi
 fi
 
 if [[ "$NO_RELOAD" == "0" ]]; then
