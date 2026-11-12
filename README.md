@@ -70,7 +70,7 @@ re-running the script is a safe no-op.
 
 ## install-gnome-terminal-shim.sh
 
-`gnome-terminal` → `konsole` compatibility shim (+ auto-accept).
+`gnome-terminal` → `konsole` / `kitty` compatibility shim (+ auto-accept).
 
 Nyarch Updater (flatpak `moe.nyarchlinux.updater`) hardcodes `gnome-terminal`
 when spawning update commands via `flatpak-spawn --host`:
@@ -83,8 +83,8 @@ If you migrated GNOME → KDE and removed `gnome-terminal`, every update fails
 with a generic "An error occurred during the update process".
 
 This script installs `/usr/local/bin/gnome-terminal`, a shim that translates
-the call to `konsole -e` and rewrites known update commands to auto-accept
-prompts:
+the call to the terminal you pick and rewrites known update commands to
+auto-accept prompts:
 
 | Command | Rewritten to |
 |---|---|
@@ -98,17 +98,33 @@ Anything else passes through untouched.
 
 ```bash
 chmod +x install-gnome-terminal-shim.sh
-./install-gnome-terminal-shim.sh   # asks for sudo to write /usr/local/bin
+./install-gnome-terminal-shim.sh                       # konsole + auto-accept (default, unchanged)
+./install-gnome-terminal-shim.sh --terminal kitty     # kitty + auto-accept
+./install-gnome-terminal-shim.sh --kitty --no-auto-accept  # kitty, plain pass-through
+./install-gnome-terminal-shim.sh --dry-run --terminal kitty  # preview the shim, change nothing
+./install-gnome-terminal-shim.sh --uninstall          # remove the shim
 ```
+
+Options: `--terminal <kitty|konsole>` (also `--kitty` / `--konsole` shortcuts),
+`--no-auto-accept` / `--auto-accept`, `--dry-run`, `--uninstall`, `-h` / `--help`.
 
 ### Notes
 
+- kitty and konsole take the command differently, and the shim handles that:
+  konsole needs `konsole -e <cmd>`, kitty takes the program directly
+  (`kitty <cmd>`, no `-e` — `kitty [options] [program-to-run ...]`).
+  Using `-e` with kitty would break the call.
 - `--noconfirm` on AUR helpers skips the PKGBUILD diff review — the main AUR
   safety net. Your machine, your call.
 - The sudo password is still prompted as usual; this only auto-accepts Y/n prompts.
+- `--uninstall` only removes the file if it contains the shim marker, so it
+  refuses to delete a real `gnome-terminal` if you reinstalled one later.
 - Tip: Nyarch Updater's *system* update command doesn't need the shim — it's a
   GSettings key (`system-update-command`) editable right in the app's Settings UI.
   Set it to `sudo pacman -Syu --noconfirm` directly.
+- Kitty variant verified on the VM only with stub terminals (argv translation
+  + `--noconfirm`/`-y` rewrite pass for both kitty and konsole); not yet run
+  against the real Nyarch Updater on a Nyarch machine.
 
 ## install-misans.sh
 
